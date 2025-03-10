@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.crud import (
-    get_notes_by_page, create_note
+    get_notes_by_page, create_note, delete_note
     # , get_ref_details, create_ref,
     # update_ref, delete_ref
 )
@@ -26,3 +26,8 @@ async def create_new_note(note: NoteCreate, db: AsyncSession = Depends(get_db)):
     logger.info(f"@@@@@@@@@@@@@@ create_new_note called with {note}")
     return await create_note(db, note)
 
+# Delete a note
+@router.delete("/notes/{note_id}")
+async def remove_note(note_id: int, db: AsyncSession = Depends(get_db)):
+    await delete_note(db, note_id)
+    return {"message": "Note deleted successfully"}

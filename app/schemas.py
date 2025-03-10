@@ -8,30 +8,35 @@ class SiteBase(BaseModel):
     url: str
     logo: str
     favicon: str
+    color: str
+    landing_page_id: Optional[int] = None
 
 class SiteCreate(SiteBase):
     pass
 
 class SiteResponse(SiteBase):
     id: int
-    # landing_page_id: int
 
 class SiteUpdate(BaseModel):
     title: str
     url: str
     logo: str
     favicon: str
+    color: str
+    landing_page_id: Optional[int] = None
 
 # Section Schema
 class SectionBase(BaseModel):
     site_id: int
     name: str
     title: str
+    label: Optional[str] = None
 
 class SectionCreate(BaseModel):
     site_name: str
     name: str
     title: str
+    label: Optional[str] = None
 
 class SectionResponse(SectionBase):
     id: int
@@ -39,6 +44,7 @@ class SectionResponse(SectionBase):
 class SectionUpdate(BaseModel):
     name: str
     title: str
+    label: Optional[str] = None
     theme_id: Optional[int] = None
 
 # Page Schema
@@ -47,6 +53,7 @@ class PageBase(BaseModel):
     section_name: str
     name: str
     title: str
+    primary_image: Optional[str] = None
     abstract: Optional[str] = None
     content: Optional[str] = None
 
@@ -56,8 +63,20 @@ class PageCreate(PageBase):
 class PageResponse(BaseModel):
     id: int
     section_id: int
+    # section_name: str
     name: str
     title: str
+    primary_image: Optional[str] = None
+    abstract: Optional[str] = None
+    content: Optional[str] = None
+
+class PageCreateResponse(BaseModel):
+    id: int
+    # section_id: int
+    section_name: str
+    name: str
+    title: str
+    primary_image: Optional[str] = None
     abstract: Optional[str] = None
     content: Optional[str] = None
 
@@ -71,6 +90,9 @@ class RefBase(BaseModel):
     description: Optional[str] = None
 
 class RefCreate(RefBase):
+    pass
+
+class RefUpdate(RefBase):
     pass
 
 class RefResponse(BaseModel):

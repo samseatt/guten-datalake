@@ -14,7 +14,8 @@ class Site(Base):
     title = Column(String, nullable=False)
     url = Column(String, nullable=False)
     logo = Column(String, nullable=False)
-    favicon = Column(String, nullable=False)
+    favicon = Column(String, nullable=True)
+    color = Column(String, nullable=True)
     landing_page_id = Column(Integer, nullable=True)
 
 # Define Section Table in Draft Schema
@@ -26,6 +27,7 @@ class Section(Base):
     site_id = Column(Integer, ForeignKey("draft.sites.id"), nullable=False)
     name = Column(String, index=True)
     title = Column(String, nullable=False)
+    label = Column(String, nullable=True)
 
 # Define Page Table in Draft Schema
 class Page(Base):
@@ -36,6 +38,7 @@ class Page(Base):
     section_id = Column(Integer, ForeignKey("draft.sections.id"), nullable=False)
     name = Column(String, unique=True, index=True)
     title = Column(String, nullable=False)
+    primary_image = Column(String, nullable=True)
     abstract = Column(Text)
     content = Column(Text)
 

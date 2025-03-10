@@ -3,7 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import update, delete
 from app.models import Site, Section, Page, Ref, Note
-from app.schemas import SiteCreate, SiteUpdate, SectionCreate, PageCreate, PageResponse, RefCreate, RefResponse, NoteCreate, NoteResponse
+from app.schemas import SiteCreate, SiteUpdate, SectionCreate, PageCreate, PageResponse, RefCreate, RefResponse, NoteCreate, NoteResponse, PageCreateResponse
 from fastapi import HTTPException
 import logging
 
@@ -44,6 +44,8 @@ async def update_site(db: AsyncSession, site_name: str, site_data: SiteUpdate):
     site.url = site_data.url
     site.logo = site_data.logo
     site.favicon = site_data.favicon
+    site.color = site_data.color
+    site.landing_page_id = site_data.landing_page_id
     await db.commit()
     await db.refresh(site)
     logger.info(f"$$$$$$$$$$$ crud.update_site returning: {site.title}")
@@ -98,7 +100,8 @@ async def create_section(db: AsyncSession, section: SectionCreate):
     new_section = Section(
         site_id=site_instance.id,
         name=section.name,
-        title=section.title
+        title=section.title,
+        label=section.label
     )
     
     logger.info(f"%%%%%%%%%% Created a new section for site: {site_instance.id}")
@@ -119,6 +122,7 @@ async def update_section(db: AsyncSession, section_id: int, section: SectionCrea
 
     section_instance.name = section.name
     section_instance.title = section.title
+    section_instance.label = section.label
 
     await db.commit()
     await db.refresh(section_instance)
@@ -155,11 +159,24 @@ async def get_pages_by_section(db: AsyncSession, site_name: str, section_name: s
     result = await db.execute(
         select(Page)
         .join(Section)
+        .join(Site)
         .filter(Site.name == site_name)
         .filter(Section.name == section_name)
     )
     pages_found = result.scalars().all()
-    logger.info(f"$$$$$$$$$$ pages found: {pages_found[0].name}")
+    return pages_found
+    # return result.scalars().all()
+
+# Fetch Pages by Site
+async def get_pages_by_site(db: AsyncSession, site_name: str):
+    logger.info(f"$$$$$$$$$ crud.get_pages_by_site called with {site_name}")
+    result = await db.execute(
+        select(Page)
+        .join(Section)
+        .join(Site)
+        .filter(Site.name == site_name)
+    )
+    pages_found = result.scalars().all()
     return pages_found
     # return result.scalars().all()
 
@@ -179,6 +196,7 @@ async def create_page(db: AsyncSession, page_data: PageCreate):
         section_id=section_instance.id,
         name=page_data.name,
         title=page_data.title,
+        primary_image=page_data.primary_image,
         abstract=page_data.abstract,
         content=page_data.content
     )
@@ -190,12 +208,13 @@ async def create_page(db: AsyncSession, page_data: PageCreate):
     await db.refresh(new_page)
     logger.info(f"############ New page refreshed: {new_page.name}")
 
-    return PageResponse(
+    return PageCreateResponse(
         id=new_page.id,
         site_name=site_instance.name,
         section_name=section_instance.name,
         name=new_page.name,
         title=new_page.title,
+        primary_image=new_page.primary_image,
         abstract=new_page.abstract,
         content=new_page.content
     )
@@ -230,7 +249,38 @@ async def get_page_details_by_id(db: AsyncSession, page_id: int):
     return page
 
 # Update a page
-async def update_page(db: AsyncSession, page_id: int, page: PageCreate):
+async def update_page(db: AsyncSession, page_name: str, page: PageCreate):
+    query = await db.execute(select(Page).join(Section).join(Site)
+        .where(Page.name == page_name,
+               Section.name == page.section_name,
+               Site.name == page.site_name
+        )
+    )
+    page_instance = query.scalar_one_or_none()
+
+    if not page_instance:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    section_query = await db.execute(select(Section).join(Site)
+                                     .where(Section.name == page.section_name, 
+                                            Site.name == page.site_name))
+    section_instance = section_query.scalar_one_or_none()
+    if not section_instance:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    page_instance.section_id = section_instance.id
+    page_instance.name = page.name
+    page_instance.title = page.title
+    page_instance.primary_image = page.primary_image
+    page_instance.abstract = page.abstract
+    page_instance.content = page.content
+
+    await db.commit()
+    await db.refresh(page_instance)
+    return page_instance
+
+# Update a page
+async def update_page_by_id(db: AsyncSession, page_id: int, page: PageCreate):
     query = await db.execute(select(Page).where(Page.id == page_id))
     page_instance = query.scalar_one_or_none()
 
@@ -368,6 +418,35 @@ async def create_ref(db: AsyncSession, ref_data: RefCreate):
         description=new_ref.description
     )
 
+# Update a ref
+async def update_ref(db: AsyncSession, ref_id: int, ref: RefCreate):
+    logger.info(f"crud. update_ref called with ref id: {ref_id}")
+    query = await db.execute(select(Ref).where(Ref.id == ref_id))
+    ref_instance = query.scalar_one_or_none()
+
+    if not ref_instance:
+        raise HTTPException(status_code=404, detail="Ref not found")
+
+    ref_instance.description = ref.description
+    ref_instance.url = ref.url
+
+    await db.commit()
+    await db.refresh(ref_instance)
+    return ref_instance
+
+
+# Delete a ref
+async def delete_ref(db: AsyncSession, ref_id: int):
+    query = await db.execute(select(Ref).where(Ref.id == ref_id))
+    ref_instance = query.scalar_one_or_none()
+
+    if not ref_instance:
+        raise HTTPException(status_code=404, detail="Ref not found")
+
+    await db.delete(ref_instance)
+    await db.commit()
+
+
 async def get_notes_by_page(db: AsyncSession, site: str, section: str, page: str):
     result = await db.execute(
         select(Note).join(Page).join(Section).join(Site)
@@ -409,4 +488,15 @@ async def create_note(db: AsyncSession, note_data: NoteCreate):
         page_id=new_note.page_id,
         note=new_note.note,
     )
+
+# Delete a note
+async def delete_note(db: AsyncSession, note_id: int):
+    query = await db.execute(select(Note).where(Note.id == note_id))
+    note_instance = query.scalar_one_or_none()
+
+    if not note_instance:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    await db.delete(note_instance)
+    await db.commit()
 
