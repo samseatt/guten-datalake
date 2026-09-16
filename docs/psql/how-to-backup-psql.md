@@ -1,122 +1,54 @@
-You can extract and backup your **PostgreSQL** database with **TimescaleDB** on your Mac using `pg_dump` and restore it using `pg_restore` or `psql`. Here’s a step-by-step guide:
+# Guten database archives and recovery
 
----
+The live `guten_datalake` database is the master content source. Never recreate it from the historical `scripts/database/schema.sql`. Archive the live database before schema changes.
 
-## **1. Backup the Database**
+## Backup
 
-### **A. Check Your PostgreSQL Version**
-Ensure that PostgreSQL is installed and accessible via the terminal:
-```bash
-psql --version
-```
-Make sure you use the same PostgreSQL version when restoring the backup on another machine.
-
----
-
-### **B. Backup the Database**
-Use `pg_dump` to create a dump file:
+From the guten-datalake repository:
 
 ```bash
-pg_dump -U your_user -h localhost -p 5432 -Fc -d your_database -f backup.dump
-```
-- `-U your_user`: Your PostgreSQL username.
-- `-h localhost`: Host (default is `localhost`).
-- `-p 5432`: Port (default for PostgreSQL).
-- `-d your_database`: The database name.
-- `-Fc`: Custom format (recommended for TimescaleDB).
-- `-f backup.dump`: The output file.
-
-**Alternative: Plain SQL Dump**
-```bash
-pg_dump -U your_user -h localhost -p 5432 -d your_database -f backup.sql
-```
-- This generates a **plain-text SQL file**.
-- You can restore it using `psql`.
-
----
-
-### **C. Verify the Backup**
-Check if the backup file exists:
-```bash
-ls -lh backup.dump
+bash scripts/database/backup.sh
+# Or place a new archive in another existing/writable storage location:
+bash scripts/database/backup.sh /path/to/archive-parent
 ```
 
----
+The source database is deliberately fixed to `guten_datalake`. The default output is an ignored `db_dump/guten_datalake_<UTC timestamp>_<unique suffix>/` directory. No archive is overwritten or automatically deleted. Files are private to the local user.
 
-## **2. Restore the Database on a New Machine or Cloud**
+Each archive contains:
 
-### **A. Copy the Backup to the New Machine**
-Use `scp` to transfer the file:
-```bash
-scp backup.dump user@new_machine:/path/to/backup/
-```
+- `full.dump`: the authoritative PostgreSQL custom-format backup, including schema, data, constraints, indexes, and sequence values.
+- `schema.sql`: a readable schema export derived from that same archive.
+- `data.sql`: a readable data export derived from that same archive.
+- `archive-toc.txt`: archive inventory.
+- `metadata.txt`: source PostgreSQL version, database encoding, locale, and archive creation time.
+- `SHA256SUMS`: checksums for the files above.
 
-Or upload it to a cloud storage service like AWS S3, Google Drive, or Dropbox.
+A failed run retains its folder with an `INCOMPLETE` marker. Do not use it for recovery. The restore script rejects it. The script accesses the source in read-only mode; PostgreSQL's dump provides a consistent snapshot while content editing can continue. Sequence counters can advance independently of table snapshots, which can create harmless ID gaps.
 
----
+Copy the whole completed archive directory to separate storage and verify its checksums there. A copy on the same Mac does not protect against loss of the Mac. These archives contain the actual content and must not be committed to Git. There is no automatic schedule or retention policy yet.
 
-### **B. Restore the Backup**
+## Restore safely
 
-#### **1. Create a New Database**
-On the new machine, first ensure PostgreSQL and TimescaleDB are installed. Then, create the database:
+Use a trusted archive and a NEW database name:
 
 ```bash
-createdb -U your_user -h localhost -p 5432 new_database
+bash scripts/database/restore.sh /absolute/path/to/archive guten_restore_20260916
 ```
 
-#### **2. Restore the Dump**
-If you used `-Fc` format (`backup.dump`), restore with `pg_restore`:
-```bash
-pg_restore -U your_user -h localhost -p 5432 -d new_database backup.dump
-```
-- This restores the database efficiently, preserving **TimescaleDB** hypertables.
+The script checks file integrity, creates a database from `template0`, and restores the full archive in one transaction. It refuses `guten_datalake`, names outside `guten_*`, and every existing target database. It never uses `--clean`, drops a database, or changes an application connection. A failed restore leaves the new database for inspection; retry with a new name after resolving the failure.
 
-If you used **plain SQL format (`backup.sql`)**, restore it using `psql`:
-```bash
-psql -U your_user -h localhost -p 5432 -d new_database -f backup.sql
-```
+After restoration, verify table counts, representative content and relations, constraints, and sequence values. Run the application against the recovery database before deliberately switching away from the original. Recovery does not require overwriting the original database. Do not import `schema.sql` and `data.sql` sequentially as the normal restore procedure: the full archive allows `pg_restore` to order data and constraint restoration correctly.
 
----
+## Connection settings and portability
 
-### **C. Verify the Restore**
-Check if your tables exist:
-```bash
-psql -U your_user -d new_database -c "\dt"
-```
-For TimescaleDB hypertables, check with:
-```bash
-psql -U your_user -d new_database -c "\dx"
-```
+Requirements: Bash, PostgreSQL client tools (`pg_dump`, `pg_restore`, `psql`, `createdb`), and `shasum`. Use matching dump/restore client tools; the dump client must support the source server. Restoring to older PostgreSQL major versions is not a supported migration plan.
 
----
+Both scripts honor standard libpq variables: `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSFILE`, and `PGSSLMODE`. They do not read the application's SQLAlchemy `DATABASE_URL` or load `.env`. Use a password file with permissions `0600`; do not put passwords in scripts or Git. `-w` makes a missing credential fail rather than hang unattended.
 
-## **3. Automate the Backup (Optional)**
-If you want to automate the backup process, you can schedule it using `cron` or `launchd` on macOS.
+For a future RDS restore, set these variables to the target connection, using appropriate TLS verification and a role allowed to create a new database. Check target extensions, encoding, and locale against `metadata.txt` before migration. This helper uses the target template0's encoding/locale defaults; locale differences require a deliberate migration decision. A full AWS migration rehearsal remains necessary.
 
-Example cron job (run daily at midnight):
-```bash
-0 0 * * * pg_dump -U your_user -h localhost -p 5432 -Fc -d your_database -f /path/to/backup/$(date +"%Y%m%d").dump
-```
+The full archive preserves source ownership/privilege metadata, but the restore helper skips original owners, grants, and tablespaces for portability. Objects belong to the restoring role; application access must be configured explicitly on the target. Cluster-wide roles/passwords and server configuration are not included in a per-database dump.
 
----
+## Media is separate
 
-## **Summary**
-| Task | Command |
-|---|---|
-| Backup (custom format) | `pg_dump -U your_user -h localhost -p 5432 -Fc -d your_database -f backup.dump` |
-| Backup (plain SQL) | `pg_dump -U your_user -h localhost -p 5432 -d your_database -f backup.sql` |
-| Restore (custom format) | `pg_restore -U your_user -h localhost -p 5432 -d new_database backup.dump` |
-| Restore (plain SQL) | `psql -U your_user -h localhost -p 5432 -d new_database -f backup.sql` |
-
-Would you like a more **cloud-specific guide** (e.g., AWS RDS, Google Cloud SQL, or DigitalOcean)? 🚀
-
----
-
-## **Docker**
-If using Docker, connect to your container first:
-
-```
-docker exec -it your_postgres_container pg_dump -U your_username -Fc your_database > backup.dump
-```
----
-
+Database backups preserve image URLs/paths, not image files in the frontend `public/assets` directories or remote storage. Keep the archived repositories/assets alongside the database archive for complete site recovery.

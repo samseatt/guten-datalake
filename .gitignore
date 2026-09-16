@@ -28,3 +28,8 @@ logs/
 docs-wip/
 db_dump/
 
+# Local artifacts and safe configuration examples
+.DS_Store
+/.venv/
+*.dump
+!.env.example
