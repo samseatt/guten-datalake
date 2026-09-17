@@ -3,9 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.crud import (
     get_pages_by_section, get_page_details, get_page_details_by_id, get_pages_by_site, create_page,
-    update_page, delete_page
+    update_page, update_page_by_id, delete_page
 )
-from app.schemas import PageCreate, PageResponse, PageCreateResponse
+from app.schemas import PageCreate, PageResponse, PageCreateResponse, OrderRequest
+from app.crud import reorder_pages
 import logging
 
 # Logger for this file
@@ -74,9 +75,14 @@ async def update_existing_page(page_name: str, page: PageCreate, db: AsyncSessio
 
 @router.put("/page_by_id/{page_id}", response_model=PageResponse)
 async def update_existing_page_by_id(page_id: int, page: PageCreate, db: AsyncSession = Depends(get_db)):
-    return await update_page(db, page_id, page)
+    return await update_page_by_id(db, page_id, page)
 
 @router.delete("/pages/{page_id}")
 async def remove_page(page_id: int, db: AsyncSession = Depends(get_db)):
     await delete_page(db, page_id)
     return {"message": "Page deleted successfully"}
+
+
+@router.put("/sites/{site_name}/sections/{section_name}/pages/order", response_model=list[PageResponse])
+async def order_pages(site_name: str, section_name: str, request: OrderRequest, db: AsyncSession = Depends(get_db)):
+    return await reorder_pages(db, site_name, section_name, request)

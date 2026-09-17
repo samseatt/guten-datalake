@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 import app.crud as crud
 from app.crud import create_site, get_site_by_name, get_sites
-from app.schemas import SiteCreate, SiteResponse, SiteUpdate
+from app.schemas import SiteCreate, SiteResponse, SiteUpdate, LandingResponse
 import logging
 
 # Logger for this file
@@ -49,7 +49,8 @@ async def update_site(site_name: str, site: SiteUpdate, db: AsyncSession = Depen
 # async def update_existing_site(page_id: int, page: PageCreate, db: AsyncSession = Depends(get_db)):
 #     return await update_site(db, page_id, page)
 
-@router.delete("/site/{site_name}")
+@router.delete("/sites/{site_name}")
+@router.delete("/site/{site_name}", include_in_schema=False)
 async def delete_site(site_name: str, db: AsyncSession = Depends(get_db)):
     deleted = await crud.delete_site(db, site_name)
     if not deleted:
@@ -60,3 +61,8 @@ async def delete_site(site_name: str, db: AsyncSession = Depends(get_db)):
 # async def remove_page(page_id: int, db: AsyncSession = Depends(get_db)):
 #     await delete_site(db, page_id)
 #     return {"message": "Page deleted successfully"}
+
+
+@router.get("/sites/{site_name}/landing", response_model=LandingResponse)
+async def landing(site_name: str, section: str | None = None, db: AsyncSession = Depends(get_db)):
+    return await crud.get_landing(db, site_name, section)

@@ -26,3 +26,14 @@ The application reads DATABASE_URL, with a legacy hard-coded fallback in app/dat
 Read the [backup/recovery guide](docs/psql/how-to-backup-psql.md). Keep db_dump ignored, copy completed archives to separate storage, and archive frontend image files independently. No working Docker setup is supplied yet; the empty historical Dockerfile has been removed.
 
 See [local operations](../guten/README.md) and [storage and Git conventions](../guten/docs/storage-and-git.md). Other documents in docs are historical references and may describe unfinished features.
+
+## Project structure
+
+```text
+app/ — models, request/response schemas, CRUD, FastAPI routes
+scripts/database/ — baseline, migrations, migration runner, backup/restore
+tests/ — guarded PostgreSQL/FastAPI/Crust integration tests
+docs/ — operational and API notes
+```
+
+See [scoped names, ordering, and migrations](docs/scoping-and-ordering.md) for the current contract.

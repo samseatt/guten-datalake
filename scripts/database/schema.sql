@@ -1,188 +1,1080 @@
--- 1️ Create Database (Skip if already exists)
--- CREATE DATABASE guten_datalake;
--- \c guten_datalake
+-- Baseline captured from the live Guten schema, 2026-09-17.
+-- For a NEW empty database only; then run migrate.py. Never rerun on existing data.
+--
+-- PostgreSQL database dump
+--
 
--- 2️ Create Schemas
-CREATE SCHEMA IF NOT EXISTS draft;
-CREATE SCHEMA IF NOT EXISTS published;
-CREATE SCHEMA IF NOT EXISTS workflow;
+-- Dumped from database version 14.13 (Homebrew)
+-- Dumped by pg_dump version 14.13 (Homebrew)
 
--- 3️ Draft Schema (For Editing & Staging)
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
 
--- Themes Table (Created first to be referenced later)
-CREATE TABLE IF NOT EXISTS draft.themes (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    primary_color VARCHAR(7),    
-    background_color VARCHAR(7), 
-    created_at TIMESTAMP DEFAULT NOW()
+--
+-- Name: draft; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA draft;
+
+
+--
+-- Name: published; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA published;
+
+
+--
+-- Name: workflow; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA workflow;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: notes; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.notes (
+    id integer NOT NULL,
+    page_id integer,
+    note text NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
 );
 
--- Sites Table
-CREATE TABLE IF NOT EXISTS draft.sites (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,  
-    title VARCHAR(255) NOT NULL,        
-    logo VARCHAR(255),                  
-    url VARCHAR(255),                    
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: notes_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.notes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: notes_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.notes_id_seq OWNED BY draft.notes.id;
+
+
+--
+-- Name: pages; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.pages (
+    id integer NOT NULL,
+    section_id integer,
+    template_id integer,
+    name character varying(255) NOT NULL,
+    primary_image character varying(255),
+    abstract text,
+    content text NOT NULL,
+    tags text[],
+    sort_order integer DEFAULT 0,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    title text
 );
 
--- Sections Table
-CREATE TABLE IF NOT EXISTS draft.sections (
-    id SERIAL PRIMARY KEY,
-    site_id INT REFERENCES draft.sites(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,      
-    theme_id INT REFERENCES draft.themes(id),  
-    sort_order INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: pages_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.pages_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: pages_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.pages_id_seq OWNED BY draft.pages.id;
+
+
+--
+-- Name: refs; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.refs (
+    id integer NOT NULL,
+    page_id integer,
+    url character varying(255) NOT NULL,
+    description text,
+    type character varying(50),
+    sort_order integer DEFAULT 0,
+    CONSTRAINT refs_type_check CHECK (((type)::text = ANY (ARRAY[('white_paper'::character varying)::text, ('external_link'::character varying)::text])))
 );
 
--- Templates Table
-CREATE TABLE IF NOT EXISTS draft.templates (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    layout_options JSONB NOT NULL, 
-    created_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: refs_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.refs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: refs_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.refs_id_seq OWNED BY draft.refs.id;
+
+
+--
+-- Name: sections; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.sections (
+    id integer NOT NULL,
+    site_id integer,
+    name character varying(255) NOT NULL,
+    section_theme_id integer,
+    sort_order integer DEFAULT 0,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    title text,
+    label text
 );
 
--- Pages Table
-CREATE TABLE IF NOT EXISTS draft.pages (
-    id SERIAL PRIMARY KEY,
-    section_id INT REFERENCES draft.sections(id) ON DELETE CASCADE,
-    template_id INT REFERENCES draft.templates(id),  
-    name VARCHAR(255) NOT NULL UNIQUE,         
-    primary_image VARCHAR(255),                     
-    abstract TEXT,                                  
-    content TEXT NOT NULL,                          
-    tags TEXT[],                                    
-    sort_order INT DEFAULT 0,                       
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: sections_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.sections_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: sections_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.sections_id_seq OWNED BY draft.sections.id;
+
+
+--
+-- Name: sites; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.sites (
+    id integer NOT NULL,
+    name character varying(255) NOT NULL,
+    title character varying(255) NOT NULL,
+    logo character varying(255),
+    url character varying(255),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    landing_page_id integer,
+    favicon text,
+    color text
 );
 
--- Refs Table
-CREATE TABLE IF NOT EXISTS draft.refs (
-    id SERIAL PRIMARY KEY,
-    page_id INT REFERENCES draft.pages(id) ON DELETE CASCADE,
-    url VARCHAR(255) NOT NULL,
-    description TEXT,
-    type VARCHAR(50) CHECK (type IN ('white_paper', 'external_link')),
-    sort_order INT DEFAULT 0
+
+--
+-- Name: sites_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.sites_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: sites_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.sites_id_seq OWNED BY draft.sites.id;
+
+
+--
+-- Name: templates; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.templates (
+    id integer NOT NULL,
+    template_name character varying(255) NOT NULL,
+    layout_options jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
 );
 
--- Notes Table
-CREATE TABLE IF NOT EXISTS draft.notes (
-    id SERIAL PRIMARY KEY,
-    page_id INT REFERENCES draft.pages(id) ON DELETE CASCADE,
-    note TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: templates_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.templates_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: templates_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.templates_id_seq OWNED BY draft.templates.id;
+
+
+--
+-- Name: themes; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.themes (
+    id integer NOT NULL,
+    theme_name character varying(255) NOT NULL,
+    primary_color character varying(7),
+    background_color character varying(7),
+    created_at timestamp without time zone DEFAULT now()
 );
 
--- Users Table
-CREATE TABLE IF NOT EXISTS draft.users (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role VARCHAR(50) CHECK (role IN ('admin', 'editor', 'viewer')),
-    created_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: themes_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.themes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: themes_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.themes_id_seq OWNED BY draft.themes.id;
+
+
+--
+-- Name: users; Type: TABLE; Schema: draft; Owner: -
+--
+
+CREATE TABLE draft.users (
+    id integer NOT NULL,
+    email character varying(255) NOT NULL,
+    password_hash text NOT NULL,
+    role character varying(50),
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('admin'::character varying)::text, ('editor'::character varying)::text, ('viewer'::character varying)::text])))
 );
 
--- 4️ Published Schema (Publicly Accessible) **FIXED**
 
--- Explicitly Define Published Tables and Primary Keys
-CREATE TABLE IF NOT EXISTS published.sites (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,  
-    title VARCHAR(255) NOT NULL,        
-    logo VARCHAR(255),                  
-    url VARCHAR(255),                    
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+--
+-- Name: users_id_seq; Type: SEQUENCE; Schema: draft; Owner: -
+--
+
+CREATE SEQUENCE draft.users_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: draft; Owner: -
+--
+
+ALTER SEQUENCE draft.users_id_seq OWNED BY draft.users.id;
+
+
+--
+-- Name: notes; Type: TABLE; Schema: published; Owner: -
+--
+
+CREATE TABLE published.notes (
+    id integer NOT NULL,
+    page_id integer NOT NULL,
+    note text NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS published.sections (
-    id SERIAL PRIMARY KEY,
-    site_id INT NOT NULL,
-    name VARCHAR(255) NOT NULL,      
-    theme_id INT,
-    sort_order INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT fk_published_site FOREIGN KEY (site_id) REFERENCES published.sites(id) ON DELETE CASCADE
+
+--
+-- Name: notes_id_seq; Type: SEQUENCE; Schema: published; Owner: -
+--
+
+CREATE SEQUENCE published.notes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: notes_id_seq; Type: SEQUENCE OWNED BY; Schema: published; Owner: -
+--
+
+ALTER SEQUENCE published.notes_id_seq OWNED BY published.notes.id;
+
+
+--
+-- Name: pages; Type: TABLE; Schema: published; Owner: -
+--
+
+CREATE TABLE published.pages (
+    id integer NOT NULL,
+    section_id integer NOT NULL,
+    template_id integer,
+    page_name character varying(255) NOT NULL,
+    primary_image character varying(255),
+    abstract text,
+    content text NOT NULL,
+    tags text[],
+    sort_order integer DEFAULT 0,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS published.templates (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    layout_options JSONB NOT NULL, 
-    created_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: pages_id_seq; Type: SEQUENCE; Schema: published; Owner: -
+--
+
+CREATE SEQUENCE published.pages_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: pages_id_seq; Type: SEQUENCE OWNED BY; Schema: published; Owner: -
+--
+
+ALTER SEQUENCE published.pages_id_seq OWNED BY published.pages.id;
+
+
+--
+-- Name: refs; Type: TABLE; Schema: published; Owner: -
+--
+
+CREATE TABLE published.refs (
+    id integer NOT NULL,
+    page_id integer NOT NULL,
+    url character varying(255) NOT NULL,
+    description text,
+    type character varying(50),
+    sort_order integer DEFAULT 0,
+    CONSTRAINT refs_type_check CHECK (((type)::text = ANY (ARRAY[('white_paper'::character varying)::text, ('external_link'::character varying)::text])))
 );
 
-CREATE TABLE IF NOT EXISTS published.pages (
-    id SERIAL PRIMARY KEY,
-    section_id INT NOT NULL,
-    template_id INT,
-    name VARCHAR(255) NOT NULL UNIQUE,         
-    primary_image VARCHAR(255),                     
-    abstract TEXT,                                  
-    content TEXT NOT NULL,                          
-    tags TEXT[],                                    
-    sort_order INT DEFAULT 0,                       
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT fk_published_section FOREIGN KEY (section_id) REFERENCES published.sections(id) ON DELETE CASCADE,
-    CONSTRAINT fk_published_template FOREIGN KEY (template_id) REFERENCES published.templates(id)
+
+--
+-- Name: refs_id_seq; Type: SEQUENCE; Schema: published; Owner: -
+--
+
+CREATE SEQUENCE published.refs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: refs_id_seq; Type: SEQUENCE OWNED BY; Schema: published; Owner: -
+--
+
+ALTER SEQUENCE published.refs_id_seq OWNED BY published.refs.id;
+
+
+--
+-- Name: sections; Type: TABLE; Schema: published; Owner: -
+--
+
+CREATE TABLE published.sections (
+    id integer NOT NULL,
+    site_id integer NOT NULL,
+    section_name character varying(255) NOT NULL,
+    section_theme_id integer,
+    sort_order integer DEFAULT 0,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS published.refs (
-    id SERIAL PRIMARY KEY,
-    page_id INT NOT NULL,
-    url VARCHAR(255) NOT NULL,
-    description TEXT,
-    type VARCHAR(50) CHECK (type IN ('white_paper', 'external_link')),
-    sort_order INT DEFAULT 0,
-    CONSTRAINT fk_published_page FOREIGN KEY (page_id) REFERENCES published.pages(id) ON DELETE CASCADE
+
+--
+-- Name: sections_id_seq; Type: SEQUENCE; Schema: published; Owner: -
+--
+
+CREATE SEQUENCE published.sections_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: sections_id_seq; Type: SEQUENCE OWNED BY; Schema: published; Owner: -
+--
+
+ALTER SEQUENCE published.sections_id_seq OWNED BY published.sections.id;
+
+
+--
+-- Name: sites; Type: TABLE; Schema: published; Owner: -
+--
+
+CREATE TABLE published.sites (
+    id integer NOT NULL,
+    site_name character varying(255) NOT NULL,
+    site_title character varying(255) NOT NULL,
+    site_logo character varying(255),
+    site_url character varying(255),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS published.notes (
-    id SERIAL PRIMARY KEY,
-    page_id INT NOT NULL,
-    note TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT fk_published_page FOREIGN KEY (page_id) REFERENCES published.pages(id) ON DELETE CASCADE
+
+--
+-- Name: sites_id_seq; Type: SEQUENCE; Schema: published; Owner: -
+--
+
+CREATE SEQUENCE published.sites_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: sites_id_seq; Type: SEQUENCE OWNED BY; Schema: published; Owner: -
+--
+
+ALTER SEQUENCE published.sites_id_seq OWNED BY published.sites.id;
+
+
+--
+-- Name: templates; Type: TABLE; Schema: published; Owner: -
+--
+
+CREATE TABLE published.templates (
+    id integer NOT NULL,
+    template_name character varying(255) NOT NULL,
+    layout_options jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
 );
 
--- 5️ Workflow Schema (Publishing Lifecycle & AI Processing)
 
--- Tracks publishing requests & approvals
-CREATE TABLE IF NOT EXISTS workflow.publishing_requests (
-    id SERIAL PRIMARY KEY,
-    site_id INT REFERENCES draft.sites(id) ON DELETE CASCADE,
-    requested_by INT REFERENCES draft.users(id),
-    status VARCHAR(50) CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT NOW(),
-    reviewed_by INT REFERENCES draft.users(id),
-    reviewed_at TIMESTAMP
+--
+-- Name: templates_id_seq; Type: SEQUENCE; Schema: published; Owner: -
+--
+
+CREATE SEQUENCE published.templates_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: templates_id_seq; Type: SEQUENCE OWNED BY; Schema: published; Owner: -
+--
+
+ALTER SEQUENCE published.templates_id_seq OWNED BY published.templates.id;
+
+
+--
+-- Name: llm_updates; Type: TABLE; Schema: workflow; Owner: -
+--
+
+CREATE TABLE workflow.llm_updates (
+    id integer NOT NULL,
+    page_id integer,
+    updated_content text NOT NULL,
+    ai_model_used character varying(255),
+    created_at timestamp without time zone DEFAULT now()
 );
 
--- Tracks AI-generated content updates
-CREATE TABLE IF NOT EXISTS workflow.llm_updates (
-    id SERIAL PRIMARY KEY,
-    page_id INT REFERENCES draft.pages(id) ON DELETE CASCADE,
-    updated_content TEXT NOT NULL,  
-    ai_model_used VARCHAR(255),
-    created_at TIMESTAMP DEFAULT NOW()
+
+--
+-- Name: llm_updates_id_seq; Type: SEQUENCE; Schema: workflow; Owner: -
+--
+
+CREATE SEQUENCE workflow.llm_updates_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: llm_updates_id_seq; Type: SEQUENCE OWNED BY; Schema: workflow; Owner: -
+--
+
+ALTER SEQUENCE workflow.llm_updates_id_seq OWNED BY workflow.llm_updates.id;
+
+
+--
+-- Name: publishing_log; Type: TABLE; Schema: workflow; Owner: -
+--
+
+CREATE TABLE workflow.publishing_log (
+    id integer NOT NULL,
+    site_id integer,
+    action character varying(50),
+    performed_by integer,
+    "timestamp" timestamp without time zone DEFAULT now(),
+    details text,
+    CONSTRAINT publishing_log_action_check CHECK (((action)::text = ANY (ARRAY[('publish'::character varying)::text, ('rollback'::character varying)::text, ('update'::character varying)::text])))
 );
 
--- Tracks publishing history (Audit Log)
-CREATE TABLE IF NOT EXISTS workflow.publishing_log (
-    id SERIAL PRIMARY KEY,
-    site_id INT REFERENCES draft.sites(id) ON DELETE CASCADE,
-    action VARCHAR(50) CHECK (action IN ('publish', 'rollback', 'update')),
-    performed_by INT REFERENCES draft.users(id),
-    timestamp TIMESTAMP DEFAULT NOW(),
-    details TEXT
+
+--
+-- Name: publishing_log_id_seq; Type: SEQUENCE; Schema: workflow; Owner: -
+--
+
+CREATE SEQUENCE workflow.publishing_log_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: publishing_log_id_seq; Type: SEQUENCE OWNED BY; Schema: workflow; Owner: -
+--
+
+ALTER SEQUENCE workflow.publishing_log_id_seq OWNED BY workflow.publishing_log.id;
+
+
+--
+-- Name: publishing_requests; Type: TABLE; Schema: workflow; Owner: -
+--
+
+CREATE TABLE workflow.publishing_requests (
+    id integer NOT NULL,
+    site_id integer,
+    requested_by integer,
+    status character varying(50) DEFAULT 'pending'::character varying,
+    created_at timestamp without time zone DEFAULT now(),
+    reviewed_by integer,
+    reviewed_at timestamp without time zone,
+    CONSTRAINT publishing_requests_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text])))
 );
+
+
+--
+-- Name: publishing_requests_id_seq; Type: SEQUENCE; Schema: workflow; Owner: -
+--
+
+CREATE SEQUENCE workflow.publishing_requests_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: publishing_requests_id_seq; Type: SEQUENCE OWNED BY; Schema: workflow; Owner: -
+--
+
+ALTER SEQUENCE workflow.publishing_requests_id_seq OWNED BY workflow.publishing_requests.id;
+
+
+--
+-- Name: notes id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.notes ALTER COLUMN id SET DEFAULT nextval('draft.notes_id_seq'::regclass);
+
+
+--
+-- Name: pages id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.pages ALTER COLUMN id SET DEFAULT nextval('draft.pages_id_seq'::regclass);
+
+
+--
+-- Name: refs id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.refs ALTER COLUMN id SET DEFAULT nextval('draft.refs_id_seq'::regclass);
+
+
+--
+-- Name: sections id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sections ALTER COLUMN id SET DEFAULT nextval('draft.sections_id_seq'::regclass);
+
+
+--
+-- Name: sites id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sites ALTER COLUMN id SET DEFAULT nextval('draft.sites_id_seq'::regclass);
+
+
+--
+-- Name: templates id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.templates ALTER COLUMN id SET DEFAULT nextval('draft.templates_id_seq'::regclass);
+
+
+--
+-- Name: themes id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.themes ALTER COLUMN id SET DEFAULT nextval('draft.themes_id_seq'::regclass);
+
+
+--
+-- Name: users id; Type: DEFAULT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.users ALTER COLUMN id SET DEFAULT nextval('draft.users_id_seq'::regclass);
+
+
+--
+-- Name: notes id; Type: DEFAULT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.notes ALTER COLUMN id SET DEFAULT nextval('published.notes_id_seq'::regclass);
+
+
+--
+-- Name: pages id; Type: DEFAULT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.pages ALTER COLUMN id SET DEFAULT nextval('published.pages_id_seq'::regclass);
+
+
+--
+-- Name: refs id; Type: DEFAULT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.refs ALTER COLUMN id SET DEFAULT nextval('published.refs_id_seq'::regclass);
+
+
+--
+-- Name: sections id; Type: DEFAULT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.sections ALTER COLUMN id SET DEFAULT nextval('published.sections_id_seq'::regclass);
+
+
+--
+-- Name: sites id; Type: DEFAULT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.sites ALTER COLUMN id SET DEFAULT nextval('published.sites_id_seq'::regclass);
+
+
+--
+-- Name: templates id; Type: DEFAULT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.templates ALTER COLUMN id SET DEFAULT nextval('published.templates_id_seq'::regclass);
+
+
+--
+-- Name: llm_updates id; Type: DEFAULT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.llm_updates ALTER COLUMN id SET DEFAULT nextval('workflow.llm_updates_id_seq'::regclass);
+
+
+--
+-- Name: publishing_log id; Type: DEFAULT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_log ALTER COLUMN id SET DEFAULT nextval('workflow.publishing_log_id_seq'::regclass);
+
+
+--
+-- Name: publishing_requests id; Type: DEFAULT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_requests ALTER COLUMN id SET DEFAULT nextval('workflow.publishing_requests_id_seq'::regclass);
+
+
+--
+-- Name: notes notes_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.notes
+    ADD CONSTRAINT notes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pages pages_page_name_key; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.pages
+    ADD CONSTRAINT pages_page_name_key UNIQUE (name);
+
+
+--
+-- Name: pages pages_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.pages
+    ADD CONSTRAINT pages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: refs refs_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.refs
+    ADD CONSTRAINT refs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sections sections_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sections
+    ADD CONSTRAINT sections_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sites sites_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sites
+    ADD CONSTRAINT sites_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sites sites_site_name_key; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sites
+    ADD CONSTRAINT sites_site_name_key UNIQUE (name);
+
+
+--
+-- Name: templates templates_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.templates
+    ADD CONSTRAINT templates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: themes themes_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.themes
+    ADD CONSTRAINT themes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.users
+    ADD CONSTRAINT users_email_key UNIQUE (email);
+
+
+--
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notes notes_pkey; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.notes
+    ADD CONSTRAINT notes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pages pages_page_name_key; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.pages
+    ADD CONSTRAINT pages_page_name_key UNIQUE (page_name);
+
+
+--
+-- Name: pages pages_pkey; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.pages
+    ADD CONSTRAINT pages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: refs refs_pkey; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.refs
+    ADD CONSTRAINT refs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sections sections_pkey; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.sections
+    ADD CONSTRAINT sections_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sites sites_pkey; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.sites
+    ADD CONSTRAINT sites_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sites sites_site_name_key; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.sites
+    ADD CONSTRAINT sites_site_name_key UNIQUE (site_name);
+
+
+--
+-- Name: templates templates_pkey; Type: CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.templates
+    ADD CONSTRAINT templates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: llm_updates llm_updates_pkey; Type: CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.llm_updates
+    ADD CONSTRAINT llm_updates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: publishing_log publishing_log_pkey; Type: CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_log
+    ADD CONSTRAINT publishing_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: publishing_requests publishing_requests_pkey; Type: CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_requests
+    ADD CONSTRAINT publishing_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notes notes_page_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.notes
+    ADD CONSTRAINT notes_page_id_fkey FOREIGN KEY (page_id) REFERENCES draft.pages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pages pages_section_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.pages
+    ADD CONSTRAINT pages_section_id_fkey FOREIGN KEY (section_id) REFERENCES draft.sections(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pages pages_template_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.pages
+    ADD CONSTRAINT pages_template_id_fkey FOREIGN KEY (template_id) REFERENCES draft.templates(id);
+
+
+--
+-- Name: refs refs_page_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.refs
+    ADD CONSTRAINT refs_page_id_fkey FOREIGN KEY (page_id) REFERENCES draft.pages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sections sections_section_theme_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sections
+    ADD CONSTRAINT sections_section_theme_id_fkey FOREIGN KEY (section_theme_id) REFERENCES draft.themes(id);
+
+
+--
+-- Name: sections sections_site_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sections
+    ADD CONSTRAINT sections_site_id_fkey FOREIGN KEY (site_id) REFERENCES draft.sites(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sites sites_landing_page_id_fkey; Type: FK CONSTRAINT; Schema: draft; Owner: -
+--
+
+ALTER TABLE ONLY draft.sites
+    ADD CONSTRAINT sites_landing_page_id_fkey FOREIGN KEY (landing_page_id) REFERENCES draft.pages(id) ON DELETE SET NULL;
+
+
+--
+-- Name: refs fk_published_page; Type: FK CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.refs
+    ADD CONSTRAINT fk_published_page FOREIGN KEY (page_id) REFERENCES published.pages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: notes fk_published_page; Type: FK CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.notes
+    ADD CONSTRAINT fk_published_page FOREIGN KEY (page_id) REFERENCES published.pages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pages fk_published_section; Type: FK CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.pages
+    ADD CONSTRAINT fk_published_section FOREIGN KEY (section_id) REFERENCES published.sections(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sections fk_published_site; Type: FK CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.sections
+    ADD CONSTRAINT fk_published_site FOREIGN KEY (site_id) REFERENCES published.sites(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pages fk_published_template; Type: FK CONSTRAINT; Schema: published; Owner: -
+--
+
+ALTER TABLE ONLY published.pages
+    ADD CONSTRAINT fk_published_template FOREIGN KEY (template_id) REFERENCES published.templates(id);
+
+
+--
+-- Name: llm_updates llm_updates_page_id_fkey; Type: FK CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.llm_updates
+    ADD CONSTRAINT llm_updates_page_id_fkey FOREIGN KEY (page_id) REFERENCES draft.pages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: publishing_log publishing_log_performed_by_fkey; Type: FK CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_log
+    ADD CONSTRAINT publishing_log_performed_by_fkey FOREIGN KEY (performed_by) REFERENCES draft.users(id);
+
+
+--
+-- Name: publishing_log publishing_log_site_id_fkey; Type: FK CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_log
+    ADD CONSTRAINT publishing_log_site_id_fkey FOREIGN KEY (site_id) REFERENCES draft.sites(id) ON DELETE CASCADE;
+
+
+--
+-- Name: publishing_requests publishing_requests_requested_by_fkey; Type: FK CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_requests
+    ADD CONSTRAINT publishing_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES draft.users(id);
+
+
+--
+-- Name: publishing_requests publishing_requests_reviewed_by_fkey; Type: FK CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_requests
+    ADD CONSTRAINT publishing_requests_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES draft.users(id);
+
+
+--
+-- Name: publishing_requests publishing_requests_site_id_fkey; Type: FK CONSTRAINT; Schema: workflow; Owner: -
+--
+
+ALTER TABLE ONLY workflow.publishing_requests
+    ADD CONSTRAINT publishing_requests_site_id_fkey FOREIGN KEY (site_id) REFERENCES draft.sites(id) ON DELETE CASCADE;
+
+
+--
+-- PostgreSQL database dump complete
+--

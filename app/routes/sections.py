@@ -5,7 +5,8 @@ from app.crud import (
     get_sections_by_site, get_section_details, get_section_details_by_id,
     create_section, update_section, delete_section
 )
-from app.schemas import SectionCreate, SectionUpdate, SectionResponse
+from app.schemas import SectionCreate, SectionUpdate, SectionResponse, OrderRequest
+from app.crud import reorder_sections
 import logging
 
 # Logger for this file
@@ -58,3 +59,8 @@ async def remove_section(section_id: int, db: AsyncSession = Depends(get_db)):
     logger.info(f"remove_section called with section id: {section_id}")
     await delete_section(db, section_id)
     return {"message": "Section deleted successfully"}
+
+
+@router.put("/sites/{site_name}/sections/order", response_model=list[SectionResponse])
+async def order_sections(site_name: str, request: OrderRequest, db: AsyncSession = Depends(get_db)):
+    return await reorder_sections(db, site_name, request)
