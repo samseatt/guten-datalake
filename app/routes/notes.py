@@ -1,33 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.crud import (
-    get_notes_by_page, create_note, delete_note
-    # , get_ref_details, create_ref,
-    # update_ref, delete_ref
-)
-from app.schemas import NoteCreate, NoteResponse
-import logging
-
-# Logger for this file
-logger = logging.getLogger(__name__)
+from app.crud import get_notes_by_page, create_note, update_note, delete_note
+from app.schemas import NoteCreate, NoteUpdate, NoteResponse
 
 router = APIRouter()
 
 
 @router.get("/notes", response_model=list[NoteResponse])
 async def read_notes(site: str, section: str, page: str, db: AsyncSession = Depends(get_db)):
-    logger.info(f"@@@@@@@@@@@@@@ read_notes called with site: {site}, section: {section}, page: {page}")
     return await get_notes_by_page(db, site, section, page)
 
-# Create a new note
-@router.post("/notes", response_model=NoteResponse)
-async def create_new_note(note: NoteCreate, db: AsyncSession = Depends(get_db)):
-    logger.info(f"@@@@@@@@@@@@@@ create_new_note called with {note}")
-    return await create_note(db, note)
 
-# Delete a note
-@router.delete("/notes/{note_id}")
-async def remove_note(note_id: int, db: AsyncSession = Depends(get_db)):
-    await delete_note(db, note_id)
+@router.post("/notes", response_model=NoteResponse)
+async def create_new_note(data: NoteCreate, db: AsyncSession = Depends(get_db)):
+    return await create_note(db, data)
+
+
+@router.put("/notes/{item_id}", response_model=NoteResponse)
+async def update_existing_note(item_id: int, data: NoteUpdate, db: AsyncSession = Depends(get_db)):
+    return await update_note(db, item_id, data)
+
+
+@router.delete("/notes/{item_id}")
+async def remove_note(item_id: int, site: str, section: str, page: str, db: AsyncSession = Depends(get_db)):
+    await delete_note(db, item_id, site, section, page)
     return {"message": "Note deleted successfully"}

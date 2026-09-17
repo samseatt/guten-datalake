@@ -161,6 +161,74 @@ class OrderingIntegration(unittest.TestCase):
         rows=self.call("GET",f"/pages_all/{self.a}")
         self.assertTrue(all(row["section_name"] for row in rows))
 
+    def test_editorial_crud_and_scope(self):
+        scope = dict(site_name=self.a, section_name="shared", page_name="same")
+        query = f"?site={self.a}&section=shared&page=same"
+        foreign_query = f"?site={self.b}&section=shared&page=same"
+        other_query = f"?site={self.a}&section=other&page=same"
+        for kind, fields, updated in [
+            ("refs", dict(url="https://example.com/a", description="Original"), dict(url="http://example.com/b", description="Updated")),
+            ("notes", dict(note="**Original**\n\nNote"), dict(note="  **Updated**\n\nNote  ")),
+        ]:
+            with self.subTest(kind=kind):
+                self.assertEqual(self.call("GET", f"/{kind}"+query), [])
+                item = self.call("POST", f"/{kind}", {**scope, **fields})
+                item2 = self.call("POST", f"/{kind}", {**scope, **fields})
+                self.assertEqual(item["page_id"], self.pa["id"])
+                self.assertEqual([row["id"] for row in self.call("GET", f"/{kind}"+query)], [item["id"], item2["id"]])
+                self.assertEqual(self.call("GET", f"/{kind}"+foreign_query), [])
+                endpoint=f'/{kind}/{item["id"]}'
+                for wrong in [dict(site_name=self.b), dict(section_name="other"), dict(page_name="second")]:
+                    self.call("PUT", endpoint, {**scope, **updated, **wrong}, status=404)
+                for wrong in [foreign_query, other_query]:
+                    self.call("DELETE", endpoint+wrong, status=404)
+                self.call("DELETE", endpoint, status=422)
+                before=self.call("GET", f"/{kind}"+query)[0]
+                for key,value in fields.items(): self.assertEqual(before[key],value)
+                saved=self.call("PUT", endpoint, {**scope, **updated})
+                self.assertEqual(saved["id"], item["id"])
+                self.assertEqual(saved["page_id"], self.pa["id"])
+                for key,value in updated.items(): self.assertEqual(saved[key],value)
+                self.call("DELETE", endpoint+query)
+                self.call("DELETE", endpoint+query, status=404)
+                self.call("PUT", endpoint, {**scope, **updated}, status=404)
+                self.assertEqual([row["id"] for row in self.call("GET", f"/{kind}"+query)], [item2["id"]])
+
+    def test_editorial_validation_and_missing_parents(self):
+        scope=dict(site_name=self.a,section_name="shared",page_name="same")
+        query=f"?site={self.a}&section=shared&page=same"
+        ref=self.call("POST", "/refs", {**scope,"url":"  https://example.com  "})
+        self.assertEqual(ref["url"],"https://example.com")
+        self.assertIsNone(ref["description"])
+        note=self.call("POST", "/notes", {**scope,"note":"Keep me"})
+        for bad in ["", "javascript:alert(1)", "data:text/html,hello", "ftp://example.com", "/relative", "https://example.com/"+"a"*256]:
+            self.call("POST", "/refs", {**scope,"url":bad},status=422)
+            self.call("PUT", f'/refs/{ref["id"]}', {**scope,"url":bad},status=422)
+        for bad in ["", "  \n\t", None]:
+            self.call("POST", "/notes", {**scope,"note":bad},status=422)
+            self.call("PUT", f'/notes/{note["id"]}', {**scope,"note":bad},status=422)
+        for kind,fields in [("refs",dict(url="https://example.com")),("notes",dict(note="Text"))]:
+            self.call("POST",f"/{kind}",{**scope,**fields,"page_name":"missing"},status=404)
+            self.call("GET",f"/{kind}?site={self.a}&section=shared&page=missing",status=404)
+            self.call("POST",f"/{kind}",fields,status=422)
+            self.call("GET",f"/{kind}",status=422)
+            self.call("DELETE",f"/{kind}/invalid"+query,status=422)
+            self.assertEqual(len(self.call("GET",f"/{kind}"+query)),1)
+        self.assertEqual(self.call("GET","/notes"+query)[0]["note"],"Keep me")
+
+    def test_editorial_rename_and_page_deletion(self):
+        scope=dict(site_name=self.a,section_name="shared",page_name="same")
+        self.call("POST","/refs",{**scope,"url":"https://example.com"})
+        self.call("POST","/notes",{**scope,"note":"Note retained through rename"})
+        self.call("PUT","/pages/same",dict(site_name=self.a,section_name="shared",name="renamed",title="Renamed",content="Content"))
+        for kind in ["refs","notes"]:
+            self.call("GET",f"/{kind}?site={self.a}&section=shared&page=same",status=404)
+            self.assertEqual(len(self.call("GET",f"/{kind}?site={self.a}&section=shared&page=renamed")),1)
+        self.call("DELETE",f'/pages/{self.pa["id"]}')
+        self.page(self.a,"shared","renamed")
+        for kind in ["refs","notes"]:
+            self.assertEqual(self.call("GET",f"/{kind}?site={self.a}&section=shared&page=renamed"),[])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from app.models import Site, Section, Page, Ref, Note
 from app.schemas import (SiteCreate, SiteUpdate, SectionCreate, PageCreate, PageResponse,
-                         RefCreate, RefResponse, NoteCreate, NoteResponse, PageCreateResponse)
+                         PageCreateResponse)
 from fastapi import HTTPException
 import logging
 
@@ -298,130 +298,76 @@ async def get_published_page(db: AsyncSession, site_name: str, page_name: str):
     return result.scalar_one_or_none()
 
 
-async def get_refs_by_page(db: AsyncSession, site: str, section: str, page: str):
-    result = await db.execute(
-        select(Ref).join(Page).join(Section).join(Site)
-        .where(Site.name == site, Section.name == section, Page.name == page)
-    )
-    return result.scalars().all()
-
-# Create a new ref
-async def create_ref(db: AsyncSession, ref_data: RefCreate):
-    site = await db.execute(select(Site).where(Site.name == ref_data.site_name))
-    site_instance = site.scalar_one_or_none()
-    if not site_instance:
-        raise HTTPException(status_code=404, detail="Site not found")
-
-    section = await db.execute(select(Section).where(Section.site_id == site_instance.id, Section.name == ref_data.section_name))
-    section_instance = section.scalar_one_or_none()
-    if not section_instance:
-        raise HTTPException(status_code=404, detail="Section not found")
-
-    page = await db.execute(select(Page).where(Page.section_id == section_instance.id, Page.name == ref_data.page_name))
-    page_instance = page.scalar_one_or_none()
-    if not page_instance:
-        raise HTTPException(status_code=404, detail="Page not found")
-
-    new_ref = Ref(
-        page_id=page_instance.id,
-        description=ref_data.description,
-        url=ref_data.url,
-    )
-    logger.info(f"############ Creating a new ref: {new_ref.description}")
-    db.add(new_ref)
-    logger.info(f"############ New ref added: {new_ref.description}")
-    await db.commit()
-    logger.info(f"############ New ref committed: {new_ref.description}")
-    await db.refresh(new_ref)
-    logger.info(f"############ New ref refreshed: {new_ref.description}")
-
-    return RefResponse(
-        id=new_ref.id,
-        page_id=new_ref.page_id,
-        url=new_ref.url,
-        type=new_ref.type,
-        description=new_ref.description
-    )
-
-# Update a ref
-async def update_ref(db: AsyncSession, ref_id: int, ref: RefCreate):
-    logger.info(f"crud. update_ref called with ref id: {ref_id}")
-    query = await db.execute(select(Ref).where(Ref.id == ref_id))
-    ref_instance = query.scalar_one_or_none()
-
-    if not ref_instance:
-        raise HTTPException(status_code=404, detail="Ref not found")
-
-    ref_instance.description = ref.description
-    ref_instance.url = ref.url
-
-    await db.commit()
-    await db.refresh(ref_instance)
-    return ref_instance
+async def _attachment_page(db, site, section, page, lock=False):
+    # Share the site lock used by page deletion and the future publication flow.
+    if lock:
+        await _site(db, name=site, lock=True)
+    return await get_page_details(db, site, section, page)
 
 
-# Delete a ref
-async def delete_ref(db: AsyncSession, ref_id: int):
-    query = await db.execute(select(Ref).where(Ref.id == ref_id))
-    ref_instance = query.scalar_one_or_none()
-
-    if not ref_instance:
-        raise HTTPException(status_code=404, detail="Ref not found")
-
-    await db.delete(ref_instance)
-    await db.commit()
+async def _attachments(db, model, site, section, page):
+    parent = await _attachment_page(db, site, section, page)
+    return (await db.execute(select(model).where(model.page_id == parent.id)
+                            .order_by(model.id))).scalars().all()
 
 
-async def get_notes_by_page(db: AsyncSession, site: str, section: str, page: str):
-    result = await db.execute(
-        select(Note).join(Page).join(Section).join(Site)
-        .where(Site.name == site, Section.name == section, Page.name == page)
-    )
-    return result.scalars().all()
+async def _attachment(db, model, item_id, parent_id):
+    item = (await db.execute(select(model).where(model.id == item_id,
+                                               model.page_id == parent_id))).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(404, "Reference or note not found in this page")
+    return item
 
-# Create a new note
-async def create_note(db: AsyncSession, note_data: NoteCreate):
-    site = await db.execute(select(Site).where(Site.name == note_data.site_name))
-    site_instance = site.scalar_one_or_none()
-    if not site_instance:
-        raise HTTPException(status_code=404, detail="Site not found")
 
-    section = await db.execute(select(Section).where(Section.site_id == site_instance.id, Section.name == note_data.section_name))
-    section_instance = section.scalar_one_or_none()
-    if not section_instance:
-        raise HTTPException(status_code=404, detail="Section not found")
+async def _write_attachment(db, model, data, item_id=None):
+    parent = await _attachment_page(db, data.site_name, data.section_name, data.page_name, lock=True)
+    values = data.model_dump(exclude={"site_name", "section_name", "page_name"})
+    if item_id is None:
+        item = model(page_id=parent.id, **values)
+        if model is Ref:
+            item.type = "external_link"
+        db.add(item)
+    else:
+        item = await _attachment(db, model, item_id, parent.id)
+        for key, value in values.items():
+            setattr(item, key, value)
+    return await _save(db, item)
 
-    page = await db.execute(select(Page).where(Page.section_id == section_instance.id, Page.name == note_data.page_name))
-    page_instance = page.scalar_one_or_none()
-    if not page_instance:
-        raise HTTPException(status_code=404, detail="Page not found")
 
-    new_note = Note(
-        page_id=page_instance.id,
-        note=note_data.note,
-    )
-    logger.info(f"############ Creating a new note: {new_note.id}")
-    db.add(new_note)
-    logger.info(f"############ New note added: {new_note.id}")
-    await db.commit()
-    logger.info(f"############ New note committed: {new_note.id}")
-    await db.refresh(new_note)
-    logger.info(f"############ New note refreshed: {new_note.id}")
+async def _delete_attachment(db, model, item_id, site, section, page):
+    parent = await _attachment_page(db, site, section, page, lock=True)
+    item = await _attachment(db, model, item_id, parent.id)
+    await db.delete(item)
+    await _save(db)
 
-    return NoteResponse(
-        id=new_note.id,
-        page_id=new_note.page_id,
-        note=new_note.note,
-    )
 
-# Delete a note
-async def delete_note(db: AsyncSession, note_id: int):
-    query = await db.execute(select(Note).where(Note.id == note_id))
-    note_instance = query.scalar_one_or_none()
+async def get_refs_by_page(db, site, section, page):
+    return await _attachments(db, Ref, site, section, page)
 
-    if not note_instance:
-        raise HTTPException(status_code=404, detail="Note not found")
 
-    await db.delete(note_instance)
-    await db.commit()
+async def create_ref(db, data):
+    return await _write_attachment(db, Ref, data)
 
+
+async def update_ref(db, ref_id, data):
+    return await _write_attachment(db, Ref, data, ref_id)
+
+
+async def delete_ref(db, ref_id, site, section, page):
+    await _delete_attachment(db, Ref, ref_id, site, section, page)
+
+
+async def get_notes_by_page(db, site, section, page):
+    return await _attachments(db, Note, site, section, page)
+
+
+async def create_note(db, data):
+    return await _write_attachment(db, Note, data)
+
+
+async def update_note(db, note_id, data):
+    return await _write_attachment(db, Note, data, note_id)
+
+
+async def delete_note(db, note_id, site, section, page):
+    await _delete_attachment(db, Note, note_id, site, section, page)

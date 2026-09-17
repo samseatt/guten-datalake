@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, StrictInt, HttpUrl, TypeAdapter, field_validator
 from typing import Optional
 
 # Site Schema
@@ -87,14 +87,24 @@ class PageCreateResponse(BaseModel):
     abstract: Optional[str] = None
     content: Optional[str] = None
 
-# Refs Schema
-class RefBase(BaseModel):
+# Editorial attachments are always addressed within their owning page.
+class PageScope(BaseModel):
     site_name: str
     section_name: str
     page_name: str
+
+class RefBase(PageScope):
     url: str
-    # type: str
     description: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def valid_url(cls, value):
+        value = value.strip()
+        if len(value) > 255:
+            raise ValueError("Reference URL must be at most 255 characters")
+        TypeAdapter(HttpUrl).validate_python(value)
+        return value
 
 class RefCreate(RefBase):
     pass
@@ -103,23 +113,30 @@ class RefUpdate(RefBase):
     pass
 
 class RefResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     page_id: int
     url: str
-    # type: str
     description: Optional[str] = None
 
-# Notes Schema
-class NoteBase(BaseModel):
-    site_name: str
-    section_name: str
-    page_name: str
+class NoteBase(PageScope):
     note: str
+
+    @field_validator("note")
+    @classmethod
+    def nonempty_note(cls, value):
+        if not value.strip():
+            raise ValueError("Note must not be empty")
+        return value
 
 class NoteCreate(NoteBase):
     pass
 
+class NoteUpdate(NoteBase):
+    pass
+
 class NoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     page_id: int
     note: str

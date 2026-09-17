@@ -37,3 +37,5 @@ docs/ — operational and API notes
 ```
 
 See [scoped names, ordering, and migrations](docs/scoping-and-ordering.md) for the current contract.
+
+See [editorial references and notes](docs/editorial-refs-and-notes.md) for the Portal CRUD API and validation rules.
