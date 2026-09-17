@@ -33,3 +33,5 @@ db_dump/
 /.venv/
 *.dump
 !.env.example
+
+/test-results/

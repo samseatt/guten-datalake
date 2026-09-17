@@ -30,7 +30,6 @@ router = APIRouter()
 # async def read_pages(section: str, db: AsyncSession = Depends(get_db)):
 #     return await get_pages_by_section(db, section)
 async def read_pages(site: str, section: str, db: AsyncSession = Depends(get_db)):
-    logger.info(f"@@@@@@@@@@@@@@ read_pages called with site: {site}, section: {section}")
     return await get_pages_by_section(db, site, section)
 
 # @router.get("/pages/{page_name}", response_model=PageResponse)
@@ -41,9 +40,7 @@ async def read_pages(site: str, section: str, db: AsyncSession = Depends(get_db)
 #     return page
 @router.get("/pages/{page_name}", response_model=PageResponse)
 async def read_page(page_name: str, site: str, section: str, db: AsyncSession = Depends(get_db)):
-    logger.info(f"&&&&&&&&&&& read_page called with site: {site}, section: {section}")
     page = await get_page_details(db, site, section, page_name)
-    logger.info(f"&&&&&&&&&&& Returning with page details: {page.name} {page.primary_image}")
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return page
@@ -51,13 +48,11 @@ async def read_page(page_name: str, site: str, section: str, db: AsyncSession = 
 # Get all pages for the given site
 @router.get("/pages_all/{site_name}", response_model=list[PageResponse])
 async def read_all_pages(site_name: str, db: AsyncSession = Depends(get_db)):
-    logger.info(f"read_all_pages called with site: {site_name}")
     return await get_pages_by_site(db, site_name)
 
 # Get page by ID
 @router.get("/page_by_id/{page_id}", response_model=PageResponse)
 async def read_page_by_id(page_id: int, db: AsyncSession = Depends(get_db)):
-    logger.info(f"read_page_by_id called with ID: {page_id}")
     page = await get_page_details_by_id(db, page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -66,7 +61,6 @@ async def read_page_by_id(page_id: int, db: AsyncSession = Depends(get_db)):
 # Create a new page
 @router.post("/pages", response_model=PageCreateResponse)
 async def create_new_page(page: PageCreate, db: AsyncSession = Depends(get_db)):
-    logger.info(f"create_new_page called with {page}")
     return await create_page(db, page)
 
 @router.put("/pages/{page_name}", response_model=PageResponse)

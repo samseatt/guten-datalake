@@ -13,7 +13,6 @@ router = APIRouter()
 
 # @router.get("/sites")
 # async def read_sites(db: AsyncSession = Depends(get_db)):
-#     logger.info(f"$$$$$$$$$$$ read_sites called")
 #     return await get_sites(db)
 
 # @router.get("/sites/{site_name}")
@@ -38,9 +37,7 @@ async def create_new_site(site: SiteCreate, db: AsyncSession = Depends(get_db)):
 
 @router.put("/sites/{site_name}")
 async def update_site(site_name: str, site: SiteUpdate, db: AsyncSession = Depends(get_db)):
-    logger.info(f"$$$$$$$$$$$ update_site called with site_name: {site_name}")
     updated_site = await crud.update_site(db, site_name, site)
-    logger.info(f"$$$$$$$$$$$ update_site returned {update_site}")
     if not updated_site:
         raise HTTPException(status_code=404, detail="Site not found")
     return updated_site

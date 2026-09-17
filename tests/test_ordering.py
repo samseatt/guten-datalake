@@ -35,7 +35,9 @@ class OrderingIntegration(unittest.TestCase):
         cls.database = database
         cls.temp = tempfile.TemporaryDirectory(prefix="guten-order-tests-")
         cls.addClassCleanup(cls.temp.cleanup)
-        cls.log = open(Path(cls.temp.name) / "services.log", "w+")
+        log_dir = Path(os.environ.get("TEST_ARTIFACTS_DIR") or cls.temp.name)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        cls.log = open(log_dir / "api-services.log", "w+")
         cls.addClassCleanup(cls.log.close)
         cls.children = []
         cls.addClassCleanup(cls.stop)
@@ -106,6 +108,36 @@ class OrderingIntegration(unittest.TestCase):
             if status["is_published"]:
                 self.call("DELETE", f"/sites/{name}/publication", {"expected_fingerprint": status["published_fingerprint"]})
             self.call("DELETE", "/sites/" + name)
+
+    def test_readiness_checks_migration_ledger_and_recovers(self):
+        def health(base, path, expected):
+            try:
+                with urlopen(base.rsplit("/", 1)[0].removesuffix("/api") + path, timeout=10) as response:
+                    code, payload = response.status, response.read()
+            except HTTPError as exc:
+                code, payload = exc.code, exc.read()
+            self.assertEqual(code, expected, payload)
+            return json.loads(payload)
+        for base in (self.backend, self.base):
+            self.assertEqual(health(base, "/health/ready", 200), {"status": "ready"})
+        # Committed corruption is confined to the test database and restored in finally.
+        with psycopg2.connect(dbname=self.database) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT version,sha256 FROM workflow.schema_migrations ORDER BY version LIMIT 1")
+                version, checksum = cursor.fetchone()
+        try:
+            with psycopg2.connect(dbname=self.database) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("UPDATE workflow.schema_migrations SET sha256='test mismatch' WHERE version=%s", (version,))
+            for base in (self.backend, self.base):
+                self.assertEqual(health(base, "/health/ready", 503), {"status": "not ready"})
+                self.assertEqual(health(base, "/health/live", 200), {"status": "alive"})
+        finally:
+            with psycopg2.connect(dbname=self.database) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("UPDATE workflow.schema_migrations SET sha256=%s WHERE version=%s", (checksum,version))
+        for base in (self.backend, self.base):
+            health(base, "/health/ready", 200)
 
     def test_scoped_names_and_append(self):
         self.call("POST", "/sections", dict(site_name=self.a,name="shared",title="duplicate"),status=409)

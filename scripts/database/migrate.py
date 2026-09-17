@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply checksummed SQL migrations atomically using standard PostgreSQL PG* settings."""
 import argparse
+from contextlib import closing
 import hashlib
 from pathlib import Path
 import psycopg2
@@ -10,7 +11,7 @@ def migrate(database, allow_master=False):
     if not database.startswith("guten_") or (database == "guten_datalake" and not allow_master):
         raise ValueError("Use a Guten rehearsal database; master requires --allow-master after backup/rehearsal.")
     files = sorted((Path(__file__).parent / "migrations").glob("*.sql"))
-    with psycopg2.connect(dbname=database) as connection:
+    with closing(psycopg2.connect(dbname=database)) as connection, connection:
         with connection.cursor() as cursor:
             cursor.execute("SET LOCAL lock_timeout = '5s'")
             cursor.execute("SET LOCAL statement_timeout = '60s'")

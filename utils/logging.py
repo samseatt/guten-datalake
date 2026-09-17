@@ -1,37 +1,20 @@
+"""Console logging by default; optional bounded file logs for local operations."""
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+from pathlib import Path
 
-def setup_logging(log_level: str = "INFO", log_file: str = "app.log", max_file_size: int = 10_000_000, backup_count: int = 5):
-    """
-    Configures logging for the application.
 
-    Args:
-        log_level (str): The log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
-        log_file (str): Path to the log file.
-        max_file_size (int): Maximum size of the log file in bytes before rotation.
-        backup_count (int): Number of rotated log files to keep.
-    """
-    # Ensure the log directory exists
-    log_dir = os.path.dirname(log_file)
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    # Set up the root logger
+def setup_logging():
+    handlers = [logging.StreamHandler()]
+    log_file = os.environ.get("LOG_FILE")
+    if log_file:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(RotatingFileHandler(log_file, maxBytes=10_000_000, backupCount=5))
     logging.basicConfig(
-        level=getattr(logging, log_level.upper(), logging.INFO),
+        level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.StreamHandler(),  # Console logging
-            RotatingFileHandler(log_file, maxBytes=max_file_size, backupCount=backup_count),  # File logging
-        ],
+        handlers=handlers,
     )
-
-# Example usage for debugging
-if __name__ == "__main__":
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    logger.info("Logging setup is complete.")
-    logger.debug("This is a debug message.")
-    logger.error("This is an error message.")
+    if os.getenv("SQL_ECHO", "false").lower() != "true":
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

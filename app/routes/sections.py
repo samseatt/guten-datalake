@@ -36,27 +36,22 @@ async def section_detail_by_id(section_id: int, db: AsyncSession = Depends(get_d
 # Create a new section 
 @router.post("/sections", response_model=SectionResponse)
 async def create_new_section(section: SectionCreate, db: AsyncSession = Depends(get_db)):
-    logger.info(f"$$$$$$$$$$$ create_new_section called")
     return await create_section(db, section)
 
 # Update a section
 @router.put("/sections/{section_id}", response_model=SectionResponse)
 async def update_existing_section(section_id: int, section: SectionUpdate, db: AsyncSession = Depends(get_db)):
-    logger.info(f"update_existing_section called with section id: {section_id}")
     return await update_section(db, section_id, section)
 
 # @router.put("/sites/{site_name}")
 # async def update_site(site_name: str, site: SiteUpdate, db: AsyncSession = Depends(get_db)):
-#     logger.info(f"$$$$$$$$$$$ update_site called with site_name: {site_name}")
 #     updated_site = await crud.update_site(db, site_name, site)
-#     logger.info(f"$$$$$$$$$$$ update_site returned {update_site}")
 #     if not updated_site:
 #         raise HTTPException(status_code=404, detail="Site not found")
 #     return updated_site
 
 @router.delete("/sections/{section_id}")
 async def remove_section(section_id: int, db: AsyncSession = Depends(get_db)):
-    logger.info(f"remove_section called with section id: {section_id}")
     await delete_section(db, section_id)
     return {"message": "Section deleted successfully"}
 
