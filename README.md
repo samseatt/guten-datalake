@@ -2,7 +2,7 @@
 
 FastAPI/SQLAlchemy persistence service on port **8005**, serving routes under /guten and connecting to the guten_datalake PostgreSQL database. Models, CRUD, schemas, and routes live under app/.
 
-The live database is the master source for site content. Both authoring and public rendering currently use draft data intentionally. The published schema/workflow exist but publishing is incomplete. The historical scripts/database/schema.sql differs from the live database and must not be used to recreate it blindly.
+The live database is the master source for site content. Portal authoring and View Draft use draft data; Guten Sites reads published snapshots. The database baseline in scripts/database/schema.sql must be followed by all numbered migrations for a new database; never rerun the baseline on an existing database.
 
 ## Local development
 
@@ -39,3 +39,5 @@ docs/ — operational and API notes
 See [scoped names, ordering, and migrations](docs/scoping-and-ordering.md) for the current contract.
 
 See [editorial references and notes](docs/editorial-refs-and-notes.md) for the Portal CRUD API and validation rules.
+
+See [per-site publishing](docs/publishing.md) for the editor workflow, API, migration, and initial publication seeding. Portal/View Draft reads draft; Guten Sites reads published content only.

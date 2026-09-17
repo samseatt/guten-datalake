@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, func, text
 from sqlalchemy.exc import IntegrityError
 from app.models import Site, Section, Page, Ref, Note
 from app.schemas import (SiteCreate, SiteUpdate, SectionCreate, PageCreate, PageResponse,
@@ -73,6 +72,8 @@ async def update_site(db: AsyncSession, site_name: str, site_data: SiteUpdate):
 
 async def delete_site(db: AsyncSession, site_name: str):
     site = await _site(db, name=site_name, lock=True)
+    if (await db.execute(text("SELECT 1 FROM published.sites WHERE id=:id"), {"id": site.id})).scalar():
+        raise HTTPException(409, "Unpublish this site before deleting its draft.")
     await db.delete(site)
     await _save(db)
     return True
@@ -238,64 +239,6 @@ async def get_landing(db, site_name, section_name=None):
     if row is None:
         raise HTTPException(404, "No pages in this section" if section_name is not None else "No pages in this site")
     return {"page_name": row[0], "section_name": row[1]}
-
-
-## Publishing ...
-
-# Publish a site (copy from draft schema to published schema)
-async def publish_site(db: AsyncSession, site_name: str):
-    logger.info(f"^^^^^^^^^^^^^ publish_site called for site: {site_name}")
-    # Copy site
-    await db.execute(f"""
-        INSERT INTO published.sites (id, name, title)
-        SELECT id, name, title FROM draft.sites WHERE name = :site_name
-        ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, title=EXCLUDED.title
-    """, {'site_name': site_name})
-
-    logger.info(f"^^^^^^^^^^^^^ Site copied for: {site_name}")
-
-    # Copy sections
-    await db.execute(f"""
-        INSERT INTO published.sections (id, site_id, name, title)
-        SELECT sections.id, sections.site_id, sections.name, sections.title
-        FROM draft.sections
-        JOIN draft.sites ON draft.sections.site_id = draft.sites.id
-        WHERE draft.sites.name = :site_name
-        ON CONFLICT (id) DO UPDATE SET 
-            site_id=EXCLUDED.site_id, name=EXCLUDED.name, title=EXCLUDED.title
-    """, {'site_name': site_name})
-
-    logger.info(f"^^^^^^^^^^^^^ Sections copied for: {site_name}")
-
-    # Copy pages
-    await db.execute(f"""
-        INSERT INTO published.pages (id, section_id, name, title, abstract, content)
-        SELECT pages.id, pages.section_id, pages.name, pages.title, pages.abstract, pages.content
-        FROM draft.pages
-        JOIN draft.sections ON pages.section_id = sections.id
-        JOIN draft.sites ON sections.site_id = sites.id
-        WHERE sites.name = :site_name
-        ON CONFLICT (id) DO UPDATE SET 
-            section_id=EXCLUDED.section_id, name=EXCLUDED.name, title=EXCLUDED.title,
-            abstract=EXCLUDED.abstract, content=EXCLUDED.content
-    """, {'site_name': site_name})
-
-    logger.info(f"^^^^^^^^^^^^^ Pages copied for: {site_name}")
-
-    await db.commit()
-    logger.info(f"^^^^^^^^^^^^^ Published completed and committed for: {site_name}")
-
-# Get published page
-async def get_published_page(db: AsyncSession, site_name: str, page_name: str):
-    result = await db.execute(
-        select(Page).join(Section).join(Site)
-        .options(selectinload(Page.section))
-        .where(
-            Site.name == site_name,
-            Page.name == page_name
-        ).execution_options(schema_translate_map={'schema': 'published'})
-    )
-    return result.scalar_one_or_none()
 
 
 async def _attachment_page(db, site, section, page, lock=False):

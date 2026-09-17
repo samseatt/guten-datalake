@@ -13,6 +13,7 @@ import tempfile
 import time
 import unittest
 import uuid
+import psycopg2
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -31,6 +32,7 @@ class OrderingIntegration(unittest.TestCase):
         database = os.environ.get("TEST_DATABASE", "")
         if not database.startswith("guten_") or "_test_" not in database or not database.replace("_", "").isalnum():
             raise RuntimeError("Explicit TEST_DATABASE=guten_*_test_* required; never the master database")
+        cls.database = database
         cls.temp = tempfile.TemporaryDirectory(prefix="guten-order-tests-")
         cls.addClassCleanup(cls.temp.cleanup)
         cls.log = open(Path(cls.temp.name) / "services.log", "w+")
@@ -100,6 +102,9 @@ class OrderingIntegration(unittest.TestCase):
 
     def cleanup_sites(self):
         for name in self.names:
+            status = self.publication(name)
+            if status["is_published"]:
+                self.call("DELETE", f"/sites/{name}/publication", {"expected_fingerprint": status["published_fingerprint"]})
             self.call("DELETE", "/sites/" + name)
 
     def test_scoped_names_and_append(self):
@@ -228,6 +233,128 @@ class OrderingIntegration(unittest.TestCase):
         self.page(self.a,"shared","renamed")
         for kind in ["refs","notes"]:
             self.assertEqual(self.call("GET",f"/{kind}?site={self.a}&section=shared&page=renamed"),[])
+
+    def publication(self, site):
+        return self.call("GET", f"/sites/{site}/publication")
+
+    def publish(self, site):
+        return self.call("POST", f"/publish/{site}", {"expected_fingerprint": self.publication(site)["draft_fingerprint"]})
+
+    def bundle(self, site, section="shared", page="same", status=200):
+        return self.call("GET",f"/published/sites/{site}/page?section={section}&page={page}",status=status)
+
+    def sql(self, statement, params=()):
+        # setUpClass has already restricted this to the explicitly named test DB.
+        with psycopg2.connect(dbname=self.database) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(statement,params)
+                return cursor.fetchall() if cursor.description else None
+
+    def test_publication_snapshot_and_idempotence(self):
+        self.assertFalse(self.publication(self.a)["is_published"])
+        self.bundle(self.a,status=404)
+        scope=dict(site_name=self.a,section_name="shared",page_name="same")
+        ref=self.call("POST","/refs",{**scope,"url":"https://example.com"})
+        note=self.call("POST","/notes",{**scope,"note":"Original note"})
+        result=self.publish(self.a)
+        self.assertTrue(result["changed"])
+        self.assertFalse(result["has_changes"])
+        self.assertEqual(result["publish_count"],1)
+        self.assertIsNotNone(result["last_published_at"])
+        first=self.bundle(self.a)
+        self.assertEqual(first["page"]["id"],self.pa["id"])
+        self.assertEqual(first["page"]["content"],"Original content")
+        self.assertNotIn("notes",first)
+        self.assertEqual(self.sql("SELECT note FROM published.notes WHERE id=%s",(note["id"],)),[("Original note",)])
+        self.assertEqual(self.sql("SELECT url FROM published.refs WHERE id=%s",(ref["id"],)),[("https://example.com",)])
+        noop=self.publish(self.a)
+        self.assertFalse(noop["changed"])
+        self.assertEqual(noop["last_published_at"],result["last_published_at"])
+        self.call("PUT","/pages/same",dict(site_name=self.a,section_name="shared",name="same",title="Changed",content="Draft only"))
+        self.call("PUT",f'/notes/{note["id"]}',{**scope,"note":"Edited note"})
+        self.assertEqual(self.bundle(self.a)["page"]["content"],"Original content")
+        self.assertTrue(self.publication(self.a)["has_changes"])
+        self.publish(self.a)
+        self.assertEqual(self.bundle(self.a)["page"]["content"],"Draft only")
+        self.assertFalse(self.publication(self.a)["has_changes"])
+        self.assertEqual(self.sql("SELECT note FROM published.notes WHERE id=%s",(note["id"],)),[("Edited note",)])
+        self.assertFalse(self.publication(self.b)["is_published"])
+
+    def test_publication_delta_and_site_isolation(self):
+        self.publish(self.a); self.publish(self.b)
+        other=self.bundle(self.b)
+        ref=self.call("POST","/refs",dict(site_name=self.a,section_name="shared",page_name="same",url="https://example.com"))
+        self.publish(self.a)
+        # Swap two existing names while keeping their IDs; publication must not hit transient uniqueness conflicts.
+        def rename(old,new):
+            return self.call("PUT",f"/pages/{old}",dict(site_name=self.a,section_name="shared",name=new,title=new,content=new))
+        rename("same","temporary"); rename("second","same"); rename("temporary","second")
+        ids=[self.empty["id"],self.sa["id"],self.other["id"]]
+        self.call("PUT",f"/sites/{self.a}/sections/order",dict(ids=ids[::-1],expected_ids=ids))
+        self.call("PUT",f"/sites/{self.a}",dict(title="Published title",url="https://example.com",logo="/assets/logo.png",favicon="/assets/icon.png",color="#123456",landing_page_id=self.pc["id"]))
+        self.publish(self.a)
+        self.assertEqual(self.bundle(self.a)["page"]["id"],self.second["id"])
+        self.assertEqual([s["id"] for s in self.bundle(self.a)["sections"]],ids[::-1])
+        self.assertEqual(self.call("GET",f"/published/sites/{self.a}/landing"),dict(section_name="other",page_name="same"))
+        self.assertEqual(self.bundle(self.a)["site"]["color"],"#123456")
+        # Delete and recreate the same slug with a new identity, including stale refs.
+        self.call("DELETE",f'/pages/{self.pa["id"]}')
+        new=self.page(self.a,"shared","second")
+        self.call("DELETE",f'/sections/{self.other["id"]}')
+        self.publish(self.a)
+        self.assertEqual(self.bundle(self.a,page="second")["page"]["id"],new["id"])
+        self.assertEqual(self.sql("SELECT id FROM published.refs WHERE id=%s",(ref["id"],)),[])
+        self.bundle(self.a,section="other",status=404)
+        self.assertEqual(self.bundle(self.b),other)
+        self.assertEqual(self.call("GET",f"/published/sites/{self.a}/landing")["section_name"],"shared")
+
+    def test_publication_stale_request_and_concurrent_publish(self):
+        stale=self.publication(self.a)["draft_fingerprint"]
+        self.page(self.a,"shared","new-page")
+        self.call("POST",f"/publish/{self.a}",dict(expected_fingerprint=stale),status=409)
+        self.bundle(self.a,status=404)
+        token=self.publication(self.a)["draft_fingerprint"]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results=list(pool.map(lambda _:self.call("POST",f"/publish/{self.a}",dict(expected_fingerprint=token)),range(2)))
+        self.assertEqual(sorted(r["changed"] for r in results),[False,True])
+        self.assertEqual(self.publication(self.a)["publish_count"],1)
+        self.call("POST",f"/publish/{self.a}",{},status=422)
+        self.call("POST","/publish/missing-site",dict(expected_fingerprint=token),status=404)
+        self.call("GET",f"/published/sites/{self.a}/page?section=shared",status=422)
+
+    def test_failed_publication_rolls_back_everything(self):
+        self.publish(self.a)
+        before=self.bundle(self.a); status=self.publication(self.a)
+        self.call("PUT","/pages/same",dict(site_name=self.a,section_name="shared",name="same",title="Updated",content="New content"))
+        function="test_publish_failure_"+uuid.uuid4().hex
+        self.sql(f"""CREATE FUNCTION workflow.{function}() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN RAISE EXCEPTION 'Deliberate rehearsal failure'; END $$;
+            CREATE TRIGGER {function} BEFORE INSERT ON workflow.publishing_log
+            FOR EACH ROW WHEN (NEW.site_id = {self.sa['site_id']}) EXECUTE FUNCTION workflow.{function}();""")
+        try:
+            self.call("POST",f"/publish/{self.a}",dict(expected_fingerprint=self.publication(self.a)["draft_fingerprint"]),status=503)
+            self.assertEqual(self.bundle(self.a),before)
+            self.assertEqual(self.publication(self.a)["last_published_at"],status["last_published_at"])
+            self.assertEqual(self.publication(self.a)["publish_count"],1)
+            self.assertTrue(self.publication(self.a)["has_changes"])
+        finally:
+            self.sql(f"DROP TRIGGER {function} ON workflow.publishing_log; DROP FUNCTION workflow.{function}();")
+        self.publish(self.a)
+        self.assertEqual(self.bundle(self.a)["page"]["content"],"New content")
+
+    def test_unpublish_preserves_draft_and_guards_site_delete(self):
+        first=self.publish(self.a)
+        self.call("DELETE",f"/sites/{self.a}",status=409)
+        self.call("PUT","/pages/same",dict(site_name=self.a,section_name="shared",name="same",title="Updated",content="New"))
+        current=self.publish(self.a)
+        self.call("DELETE",f"/sites/{self.a}/publication",dict(expected_fingerprint=first["published_fingerprint"]),status=409)
+        result=self.call("DELETE",f"/sites/{self.a}/publication",dict(expected_fingerprint=current["published_fingerprint"]))
+        self.assertFalse(result["is_published"])
+        self.assertIsNotNone(result["last_unpublished_at"])
+        self.bundle(self.a,status=404)
+        self.assertEqual(self.call("GET",f"/pages/same?site={self.a}&section=shared")["id"],self.pa["id"])
+        self.publish(self.a)
+        self.assertEqual(self.bundle(self.a)["page"]["id"],self.pa["id"])
 
 
 if __name__ == "__main__":

@@ -157,3 +157,22 @@ class OrderRequest(BaseModel):
 class LandingResponse(BaseModel):
     section_name: str
     page_name: str
+
+
+class PublicationRequest(BaseModel):
+    expected_fingerprint: str
+
+    @field_validator("expected_fingerprint")
+    @classmethod
+    def valid_fingerprint(cls, value):
+        if len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+            raise ValueError("Expected a SHA-256 publication fingerprint")
+        return value
+
+
+class PublishedPageBundle(BaseModel):
+    site: SiteResponse
+    section: SectionResponse
+    page: PageResponse
+    sections: list[SectionResponse]
+    pages: list[PageResponse]

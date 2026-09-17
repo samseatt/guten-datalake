@@ -50,27 +50,6 @@ class Page(Base):
     abstract = Column(Text)
     content = Column(Text)
 
-# Published Site Model
-class PublishedSite(Base):
-    __tablename__ = "sites"
-    __table_args__ = {"schema": "published"}
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-    title = Column(String, nullable=False)
-
-# Published Page Model
-class PublishedPage(Base):
-    __tablename__ = "pages"
-    __table_args__ = {"schema": "published"}
-
-    id = Column(Integer, primary_key=True, index=True)
-    section_id = Column(Integer, ForeignKey("published.sections.id"), nullable=False)
-    name = Column(String, unique=True, index=True)
-    title = Column(String, nullable=False)
-    abstract = Column(Text)
-    content = Column(Text)
-
 # Define Ref Table in Draft Schema
 class Ref(Base):
     __tablename__ = "refs"

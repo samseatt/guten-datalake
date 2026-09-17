@@ -36,6 +36,6 @@ Section/page read responses include `sort_order`. `/pages_all/{site_name}` is or
 
 ## UI and publication boundary
 
-Portal section/page lists have accessible Move Up/Down buttons, disabled during requests, and inline save/conflict feedback. On a failed mutation they refresh the list. View Draft and Guten Sites both call the same landing endpoint and consume ordered draft APIs. They retain their independent layouts and URL prefixes.
+Portal section/page lists have accessible Move Up/Down buttons, disabled during requests, and inline save/conflict feedback. On a failed mutation they refresh the list. View Draft consumes ordered draft APIs. Following migration 002, Guten Sites consumes ordered published snapshots with the same landing-selection rules. They retain independent layouts and URL prefixes. See [publishing](publishing.md).
 
-Published tables, workflow publication, authentication, full refs/notes behavior, and media storage are outside this change. In particular, no draft-to-published copying is performed.
+Migration 001 addressed draft scoping and ordering only. Migration 002 and the current publication service add the published boundary; editorial refs/notes CRUD is also now supported. Authentication and centralized media storage remain future work.
