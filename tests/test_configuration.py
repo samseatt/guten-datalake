@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import sys
 import unittest
 
@@ -25,3 +26,16 @@ class ConfigurationTests(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(ValueError): validate(name)
         validate("guten_acceptance_test_abc123")
+
+    def test_secret_file_configuration_and_conflicting_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "database_url"
+            path.write_text("postgresql+asyncpg://guten_app:test_secret@postgres/guten_compose_test_local\n")
+            env = dict(os.environ, DATABASE_URL="", DATABASE_URL_FILE=str(path))
+            result = subprocess.run([sys.executable, "-B", "-c", "from app.database import parsed_url; assert parsed_url.database == 'guten_compose_test_local'"], cwd=ROOT, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            env["DATABASE_URL"] = "postgresql+asyncpg:///guten_other_test_db"
+            result = subprocess.run([sys.executable, "-B", "-c", "import app.database"], cwd=ROOT, env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("not both", result.stderr)
+            self.assertNotIn("test_secret", result.stderr)

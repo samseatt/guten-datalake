@@ -10,6 +10,14 @@ from sqlalchemy.engine import make_url
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+database_url_file = os.environ.get("DATABASE_URL_FILE", "").strip()
+if DATABASE_URL and database_url_file:
+    raise RuntimeError("Set DATABASE_URL or DATABASE_URL_FILE, not both.")
+if database_url_file:
+    try:
+        DATABASE_URL = Path(database_url_file).read_text().strip()
+    except OSError:
+        raise RuntimeError("Could not read DATABASE_URL_FILE.") from None
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is required; configure the Datalake environment before starting it.")
 try:
