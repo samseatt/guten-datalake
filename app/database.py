@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 import os
+import ssl
 from dotenv import load_dotenv
 
 from pathlib import Path
@@ -27,11 +28,26 @@ try:
 except Exception:
     raise RuntimeError("DATABASE_URL must identify a PostgreSQL database using postgresql+asyncpg.") from None
 
+# Cloud connections require both CA validation and hostname/IP verification.
+# An explicit CA also prevents URL options from silently overriding TLS policy.
+connect_args = {}
+ca_file = os.environ.get("DATABASE_SSL_CA_FILE", "").strip()
+if ca_file:
+    if any(key.lower().startswith("ssl") for key in parsed_url.query):
+        raise RuntimeError("DATABASE_SSL_CA_FILE cannot be combined with SSL URL options.")
+    try:
+        context = ssl.create_default_context(cafile=ca_file)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        connect_args["ssl"] = context
+    except (OSError, ssl.SSLError):
+        raise RuntimeError("Could not load DATABASE_SSL_CA_FILE.") from None
+
 engine = create_async_engine(
     DATABASE_URL,
     echo=os.getenv("SQL_ECHO", "false").lower() == "true",
     hide_parameters=True,
     pool_pre_ping=True,
+    connect_args=connect_args,
 )
 
 # Create async session factory

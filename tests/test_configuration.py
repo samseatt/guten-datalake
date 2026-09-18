@@ -39,3 +39,14 @@ class ConfigurationTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("not both", result.stderr)
             self.assertNotIn("test_secret", result.stderr)
+
+    def test_bad_tls_ca_and_conflicting_url_options_fail_closed(self):
+        base = "postgresql+asyncpg://user:secret_marker@postgres/guten_test"
+        for url, ca, message in ((base, "/no/such/ca.crt", "Could not load DATABASE_SSL_CA_FILE"),
+                                 (base + "?ssl=disable", "/no/such/ca.crt", "SSL URL options")):
+            result = subprocess.run([sys.executable, "-B", "-c", "import app.database"],
+                cwd=ROOT, env=dict(os.environ, DATABASE_URL=url, DATABASE_URL_FILE="",
+                                  DATABASE_SSL_CA_FILE=ca), capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(message, result.stderr)
+            self.assertNotIn("secret_marker", result.stderr)
